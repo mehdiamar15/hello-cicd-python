@@ -2,8 +2,12 @@ pipeline {
   agent any
 
   environment {
+    // Repo + deploy directory on remote hosts
     REPO_URL = 'https://github.com/mehdiamar15/hello-cicd-python.git'
     APP_DIR  = '/config/hello-cicd-python'
+
+    // Ensure tests run with the intended Python (workspace venv)
+    PYTHON_BIN = 'python3'
   }
 
   stages {
@@ -12,14 +16,18 @@ pipeline {
         checkout scm
       }
     }
+
     stage('CI: Install + Test') {
       steps {
         sh '''
+          set -e
           pwd
           ls -la
 
-          python3 -m venv .venv
+          ${PYTHON_BIN} -m venv .venv
           . .venv/bin/activate
+          python -V
+
           pip install -U pip
           pip install -r requirements.txt -r requirements-dev.txt
 
@@ -33,65 +41,93 @@ pipeline {
     }
 
     stage('CD: Deploy to Development') {
-        steps {
-            sh '''
-            ssh -o StrictHostKeyChecking=no \
-                -o ServerAliveInterval=10 \
-                -o ServerAliveCountMax=3 \
-                -i /var/jenkins_home/.ssh/id_ed25519 \
-                -p 2222 dev@development "
+      steps {
+        sh '''
+          set -e
+
+          ssh -o StrictHostKeyChecking=no \
+              -o ServerAliveInterval=10 \
+              -o ServerAliveCountMax=3 \
+              -i /var/jenkins_home/.ssh/id_ed25519 \
+              -p 2222 dev@development "
                 set -e
 
-                APP_DIR=/config/hello-cicd-python
-                REPO_URL=https://github.com/mehdiamar15/hello-cicd-python.git
+                APP_DIR=\"${APP_DIR}\"
+                REPO_URL=\"${REPO_URL}\"
 
-                if [ ! -d \\\"$APP_DIR/.git\\\" ]; then
-                    git clone \\\"$REPO_URL\\\" \\\"$APP_DIR\\\"
+                if [ ! -d \"$APP_DIR/.git\" ]; then
+                  git clone \"$REPO_URL\" \"$APP_DIR\"
                 fi
 
-                cd \\\"$APP_DIR\\\"
+                cd \"$APP_DIR\"
                 git fetch --all
                 git reset --hard origin/main
 
                 python3 -m venv .venv
                 . .venv/bin/activate
+                python -V
+
                 pip install -U pip
                 pip install -r requirements.txt
 
                 python manage.py migrate --noinput
 
-                pkill -f gunicorn || true
-                nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 </dev/null >/tmp/django_dev.log 2>&1 &
+                # Stop previous gunicorn if running
+                pkill -f \"gunicorn config.wsgi:application\" || true
+
+                # Start detached (no stdin), log to file
+                nohup .venv/bin/gunicorn config.wsgi:application \
+                  --bind 0.0.0.0:80 \
+                  </dev/null >/tmp/django_dev.log 2>&1 &
 
                 sleep 1
                 echo DEV_DEPLOYED
-                "
-            '''
-        }
+              "
+        '''
+      }
     }
+
     stage('CD: Deploy to Staging') {
       steps {
         sh '''
-          ssh -o StrictHostKeyChecking=no -i /var/jenkins_home/.ssh/id_ed25519 -p 2222 mehdi@mehdi "
-            set -e
-            if [ ! -d ${APP_DIR}/.git ]; then
-              git clone ${REPO_URL} ${APP_DIR}
-            fi
-            cd ${APP_DIR}
-            git fetch --all
-            git reset --hard origin/main
+          set -e
 
-            python3 -m venv .venv
-            . .venv/bin/activate
-            pip install -U pip
-            pip install -r requirements.txt
+          ssh -o StrictHostKeyChecking=no \
+              -o ServerAliveInterval=10 \
+              -o ServerAliveCountMax=3 \
+              -i /var/jenkins_home/.ssh/id_ed25519 \
+              -p 2222 mehdi@mehdi "
+                set -e
 
-            python manage.py migrate --noinput
+                APP_DIR=\"${APP_DIR}\"
+                REPO_URL=\"${REPO_URL}\"
 
-            pkill -f gunicorn || true
-            nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_stage.log 2>&1 &
-            echo STAGE_DEPLOYED
-          "
+                if [ ! -d \"$APP_DIR/.git\" ]; then
+                  git clone \"$REPO_URL\" \"$APP_DIR\"
+                fi
+
+                cd \"$APP_DIR\"
+                git fetch --all
+                git reset --hard origin/main
+
+                python3 -m venv .venv
+                . .venv/bin/activate
+                python -V
+
+                pip install -U pip
+                pip install -r requirements.txt
+
+                python manage.py migrate --noinput
+
+                pkill -f \"gunicorn config.wsgi:application\" || true
+
+                nohup .venv/bin/gunicorn config.wsgi:application \
+                  --bind 0.0.0.0:80 \
+                  </dev/null >/tmp/django_stage.log 2>&1 &
+
+                sleep 1
+                echo STAGE_DEPLOYED
+              "
         '''
       }
     }
@@ -99,29 +135,49 @@ pipeline {
     stage('CD: Deploy to Production (Manual)') {
       steps {
         input message: 'Deploy to PRODUCTION (adam)?', ok: 'Deploy'
+
         sh '''
-          ssh -o StrictHostKeyChecking=no -i /var/jenkins_home/.ssh/id_ed25519 -p 2222 adam@adam "
-            set -e
-            if [ ! -d ${APP_DIR}/.git ]; then
-              git clone ${REPO_URL} ${APP_DIR}
-            fi
-            cd ${APP_DIR}
-            git fetch --all
-            git reset --hard origin/main
+          set -e
 
-            python3 -m venv .venv
-            . .venv/bin/activate
-            pip install -U pip
-            pip install -r requirements.txt
+          ssh -o StrictHostKeyChecking=no \
+              -o ServerAliveInterval=10 \
+              -o ServerAliveCountMax=3 \
+              -i /var/jenkins_home/.ssh/id_ed25519 \
+              -p 2222 adam@adam "
+                set -e
 
-            python manage.py migrate --noinput
+                APP_DIR=\"${APP_DIR}\"
+                REPO_URL=\"${REPO_URL}\"
 
-            pkill -f gunicorn || true
-            nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_prod.log 2>&1 &
-            echo PROD_DEPLOYED
-          "
+                if [ ! -d \"$APP_DIR/.git\" ]; then
+                  git clone \"$REPO_URL\" \"$APP_DIR\"
+                fi
+
+                cd \"$APP_DIR\"
+                git fetch --all
+                git reset --hard origin/main
+
+                python3 -m venv .venv
+                . .venv/bin/activate
+                python -V
+
+                pip install -U pip
+                pip install -r requirements.txt
+
+                python manage.py migrate --noinput
+
+                pkill -f \"gunicorn config.wsgi:application\" || true
+
+                nohup .venv/bin/gunicorn config.wsgi:application \
+                  --bind 0.0.0.0:80 \
+                  </dev/null >/tmp/django_prod.log 2>&1 &
+
+                sleep 1
+                echo PROD_DEPLOYED
+              "
         '''
       }
     }
   }
 }
+
