@@ -51,9 +51,17 @@ pipeline {
 
             python manage.py migrate --noinput
 
+            #pkill -f gunicorn || true
+            #nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_dev.log 2>&1 &
+            #echo DEV_DEPLOYED
             pkill -f gunicorn || true
+
             nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_dev.log 2>&1 &
+
+            disown || true
+
             echo DEV_DEPLOYED
+            exit 0
           "
         '''
       }
