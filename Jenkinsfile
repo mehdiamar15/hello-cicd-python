@@ -73,8 +73,7 @@ pipeline {
                 python manage.py migrate --noinput
 
                 # Stop previous gunicorn if running
-                pkill -f \"gunicorn config.wsgi:application\" || true
-
+                pkill -f "gunicorn config.wsgi:application" || true
                 # Start detached (no stdin), log to file
                 nohup .venv/bin/gunicorn config.wsgi:application \
                   --bind 0.0.0.0:80 \
