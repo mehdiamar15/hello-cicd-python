@@ -12,14 +12,21 @@ pipeline {
         checkout scm
       }
     }
-
     stage('CI: Install + Test') {
       steps {
         sh '''
+          pwd
+          ls -la
+
           python3 -m venv .venv
           . .venv/bin/activate
           pip install -U pip
           pip install -r requirements.txt -r requirements-dev.txt
+
+          # Make sure Django settings are visible to pytest-django
+          export DJANGO_SETTINGS_MODULE=config.settings
+          export PYTHONPATH="$PWD"
+
           pytest -q
         '''
       }
