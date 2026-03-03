@@ -66,7 +66,7 @@ pipeline {
          sleep 1
          echo DEV_DEPLOYED
          EOF
-         '''
+        '''
       }
     }
     stage('CD: Deploy to Staging') {
