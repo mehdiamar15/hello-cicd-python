@@ -33,14 +33,24 @@ pipeline {
     }
 
     stage('CD: Deploy to Development') {
-      steps {
-        sh '''
-          ssh -o StrictHostKeyChecking=no -i /var/jenkins_home/.ssh/id_ed25519 -p 2222 dev@development "
+        steps {
+            sh '''
+            ssh -o StrictHostKeyChecking=no \
+                -o ServerAliveInterval=10 \
+                -o ServerAliveCountMax=3 \
+                -i /var/jenkins_home/.ssh/id_ed25519 \
+                -p 2222 dev@development << 'EOF'
+
             set -e
-            if [ ! -d ${APP_DIR}/.git ]; then
-              git clone ${REPO_URL} ${APP_DIR}
+
+            APP_DIR=/config/hello-cicd-python
+            REPO_URL=https://github.com/mehdiamar15/hello-cicd-python.git
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+                git clone "$REPO_URL" "$APP_DIR"
             fi
-            cd ${APP_DIR}
+
+            cd "$APP_DIR"
             git fetch --all
             git reset --hard origin/main
 
@@ -51,18 +61,16 @@ pipeline {
 
             python manage.py migrate --noinput
 
-            #pkill -f gunicorn || true
-            #nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_dev.log 2>&1 &
-            #echo DEV_DEPLOYED
             pkill -f gunicorn || true
             nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 </dev/null >/tmp/django_dev.log 2>&1 &
+
             sleep 1
             echo DEV_DEPLOYED
-          "
-        '''
-      }
-    }
 
+            EOF
+            '''
+        }
+    }
     stage('CD: Deploy to Staging') {
       steps {
         sh '''
