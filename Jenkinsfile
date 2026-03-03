@@ -55,13 +55,9 @@ pipeline {
             #nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_dev.log 2>&1 &
             #echo DEV_DEPLOYED
             pkill -f gunicorn || true
-
-            nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 >/tmp/django_dev.log 2>&1 &
-
-            disown || true
-
+            nohup .venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:80 </dev/null >/tmp/django_dev.log 2>&1 &
+            sleep 1
             echo DEV_DEPLOYED
-            exit 0
           "
         '''
       }
